@@ -2,71 +2,72 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle, AlertCircle } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { placeOrder } from '../services/api';
+
+const schema = z.object({
+  name: z.string().min(2, { message: "Name must be at least 2 characters" }),
+  email: z.string().email({ message: "Invalid email address" }),
+  address: z.string().min(5, { message: "Address must be at least 5 characters" }),
+  phone: z.string().regex(/^\d{10}$/, { message: "Phone must be 10 digits" }),
+});
 
 const CheckoutPage = ({ cartItems, clearCart }) => {
-  const [orderDetails, setOrderDetails] = useState({
-    name: '',
-    email: '',
-    address: '',
-    phone: '',
-  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
+  const { register, handleSubmit, formState: { errors } } = useForm({
+    resolver: zodResolver(schema)
+  });
 
   useEffect(() => {
-    // Load Razorpay script
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.async = true;
-    document.body.appendChild(script);
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login', { state: { from: '/checkout' } });
+    }
+  }, [navigate]);
 
-    return () => {
-      document.body.removeChild(script);
+  useEffect(() => {
+    const loadRazorpay = async () => {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      document.body.appendChild(script);
     };
+    loadRazorpay();
   }, []);
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setOrderDetails((prev) => ({ ...prev, [name]: value }));
-  };
 
   const getTotalPrice = () => {
     return cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   };
 
-  const handlePlaceOrder = async (e) => {
-    e.preventDefault();
+  const handlePlaceOrder = async (formData) => {
     setLoading(true);
     setError(null);
 
     try {
-      // Simulate API call to create order
-      const orderResponse = { orderId: 'ORD' + Math.random().toString(36).substr(2, 9) };
+      const orderResponse = await placeOrder({
+        items: cartItems,
+        total: getTotalPrice(),
+        ...formData
+      });
       
       const options = {
-        key: "YOUR_RAZORPAY_KEY", // Replace with your actual Razorpay key
-        amount: getTotalPrice() * 100, // Amount in paise
+        key: process.env.REACT_APP_RAZORPAY_KEY,
+        amount: getTotalPrice() * 100,
         currency: "INR",
         name: "Curry",
         description: "Food Order Payment",
         order_id: orderResponse.orderId,
         handler: function (response) {
-          // Simulate order placement
-          const placedOrder = {
-            id: response.razorpay_payment_id,
-            items: cartItems,
-            total: getTotalPrice(),
-            status: 'Placed',
-            ...orderDetails
-          };
-          clearCart();
-          navigate('/order', { state: { order: placedOrder } });
+          handlePaymentSuccess(response, orderResponse.id);
         },
         prefill: {
-          name: orderDetails.name,
-          email: orderDetails.email,
-          contact: orderDetails.phone
+          name: formData.name,
+          email: formData.email,
+          contact: formData.phone
         },
         theme: {
           color: "#10B981"
@@ -77,9 +78,23 @@ const CheckoutPage = ({ cartItems, clearCart }) => {
       paymentObject.open();
     } catch (error) {
       console.error('Error placing order:', error);
-      setError('Failed to place order. Please try again.');
+      setError(error.message || 'Failed to place order. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePaymentSuccess = async (paymentResponse, orderId) => {
+    try {
+      await updateOrderStatus(orderId, {
+        status: 'Paid',
+        transactionId: paymentResponse.razorpay_payment_id
+      });
+      clearCart();
+      navigate('/order-success', { state: { orderId } });
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      setError('Payment successful, but failed to update order status. Please contact support.');
     }
   };
 
@@ -105,53 +120,38 @@ const CheckoutPage = ({ cartItems, clearCart }) => {
         )}
         <div className="flex flex-col lg:flex-row gap-8">
           <div className="lg:w-2/3">
-            <form onSubmit={handlePlaceOrder} className="space-y-4">
+            <form onSubmit={handleSubmit(handlePlaceOrder)} className="space-y-4">
               <div>
                 <label htmlFor="name" className="block mb-1">Name</label>
                 <input
-                  type="text"
-                  id="name"
-                  name="name"
-                  value={orderDetails.name}
-                  onChange={handleInputChange}
-                  required
+                  {...register("name")}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
+                {errors.name && <p className="text-red-500 mt-1">{errors.name.message}</p>}
               </div>
               <div>
                 <label htmlFor="email" className="block mb-1">Email</label>
                 <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={orderDetails.email}
-                  onChange={handleInputChange}
-                  required
+                  {...register("email")}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
+                {errors.email && <p className="text-red-500 mt-1">{errors.email.message}</p>}
               </div>
               <div>
                 <label htmlFor="address" className="block mb-1">Address</label>
                 <textarea
-                  id="address"
-                  name="address"
-                  value={orderDetails.address}
-                  onChange={handleInputChange}
-                  required
+                  {...register("address")}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
+                {errors.address && <p className="text-red-500 mt-1">{errors.address.message}</p>}
               </div>
               <div>
                 <label htmlFor="phone" className="block mb-1">Phone</label>
                 <input
-                  type="tel"
-                  id="phone"
-                  name="phone"
-                  value={orderDetails.phone}
-                  onChange={handleInputChange}
-                  required
+                  {...register("phone")}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
+                {errors.phone && <p className="text-red-500 mt-1">{errors.phone.message}</p>}
               </div>
               <motion.button
                 type="submit"

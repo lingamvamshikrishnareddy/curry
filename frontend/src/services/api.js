@@ -21,10 +21,9 @@ api.interceptors.request.use((config) => {
 });
 
 // Menu related API calls
-
 export const getMenuItems = async (searchTerm = '') => {
   try {
-    const response = await axios.get(`${API_URL}/menu`, {
+    const response = await api.get(`/menu`, {
       params: { search: searchTerm }
     });
     return response.data;
@@ -36,7 +35,7 @@ export const getMenuItems = async (searchTerm = '') => {
 
 export const submitReview = async (reviewData) => {
   try {
-    const response = await axios.post(`${API_URL}/reviews`, reviewData);
+    const response = await api.post(`/reviews`, reviewData);
     return response.data;
   } catch (error) {
     console.error('Error submitting review:', error);
@@ -78,7 +77,7 @@ export const login = async (credentials) => {
     const response = await api.post('/auth/login', credentials);
     return response.data;
   } catch (error) {
-    throw new Error('Login failed');
+    throw error.response?.data || error;
   }
 };
 
@@ -87,7 +86,7 @@ export const register = async (userData) => {
     const response = await api.post('/auth/register', userData);
     return response.data;
   } catch (error) {
-    throw new Error('Registration failed');
+    throw error.response?.data || error;
   }
 };
 
@@ -109,7 +108,7 @@ export const updateUserProfile = async (userId, userData) => {
   }
 };
 
-// Cart related API calls (if you decide to store cart on the server)
+// Cart related API calls
 export const getCart = async (userId) => {
   try {
     const response = await api.get(`/users/${userId}/cart`);
@@ -128,9 +127,7 @@ export const updateCart = async (userId, cartItems) => {
   }
 };
 
-// Review related API calls submit review
-
-
+// Review related API calls
 export const getReviews = async (menuItemId) => {
   try {
     const response = await api.get(`/menu/${menuItemId}/reviews`);

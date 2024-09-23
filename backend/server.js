@@ -27,21 +27,16 @@ const redisClient = Redis.createClient({
 redisClient.on('error', (err) => console.log('Redis Client Error', err));
 redisClient.connect().then(() => console.log('Connected to Redis'));
 
-const corsOptions = {
+// Middleware
+app.use(cors({
   origin: 'http://localhost:3000',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
-};
-
-app.use(cors(corsOptions));
-
-const io = new Server(server, {
-  cors: corsOptions
-});
-
+}));
 app.use(express.json());
 
+// MongoDB connection
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -49,7 +44,17 @@ mongoose.connect(process.env.MONGODB_URI, {
 .then(() => console.log('Connected to MongoDB'))
 .catch((err) => console.error('MongoDB connection error:', err));
 
+// Socket.io setup
+const io = new Server(server, {
+  cors: {
+    origin: 'http://localhost:3000',
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
+});
+
 io.use(socketAuthMiddleware);
+
 io.on('connection', (socket) => {
   console.log('New client connected');
   socket.on('disconnect', () => {
@@ -57,17 +62,25 @@ io.on('connection', (socket) => {
   });
 });
 
+// Attach io and redisClient to req object
 app.use((req, res, next) => {
   req.io = io;
   req.redisClient = redisClient;
   next();
 });
 
+// Logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
   next();
 });
 
+// Test route
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'Server is running' });
+});
+
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/orders', orderRoutes);
@@ -75,8 +88,10 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/delivery', deliveryRoutes);
 
+// Error handling
 app.use(errorHandler);
 
+// 404 handler
 app.use('*', (req, res) => {
   console.log(`404 - Route not found: ${req.method} ${req.url}`);
   res.status(404).json({ message: 'Route not found' });
@@ -86,3 +101,5 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 module.exports = server;
+
+

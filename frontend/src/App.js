@@ -13,7 +13,8 @@ import ChatSupport from './components/ChatSupport';
 import Home from './pages/Home';
 import About from './pages/About';
 import MenuPage from './pages/MenuPage';
-import Login from './pages/Login';
+import LoginPage from './pages/Login';
+import RegisterPage from './pages/RegisterPage';
 import Admin from './pages/Admin';
 import Profile from './pages/Profile';
 import Contact from './pages/Contact';
@@ -22,6 +23,7 @@ import TrackOrderPage from './pages/TrackOrderPage';
 import CheckoutPage from './pages/CheckoutPage';
 
 import { initializeSocket, socket } from './services/websocket';
+import { getUserProfile } from './services/api';
 
 const App = () => {
   const [cartItems, setCartItems] = useState([]);
@@ -33,6 +35,10 @@ const App = () => {
   useEffect(() => {
     gsap.to('body', { opacity: 1, duration: 0.5, ease: 'power2.out' });
     const cleanup = initializeSocket();
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetchUserProfile();
+    }
 
     return () => {
       cleanup();
@@ -41,6 +47,16 @@ const App = () => {
       }
     };
   }, []);
+
+  const fetchUserProfile = async () => {
+    try {
+      const userData = await getUserProfile();
+      setUser(userData);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      localStorage.removeItem('token');
+    }
+  };
 
   const addToCart = (item) => {
     setCartItems((prevItems) => {
@@ -76,6 +92,7 @@ const App = () => {
 
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem('token');
   };
 
   const addToOrderHistory = (order) => {
@@ -161,7 +178,15 @@ const App = () => {
                 path="/login"
                 element={
                   <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
-                    <Login onLogin={handleLogin} />
+                    <LoginPage onLogin={handleLogin} />
+                  </motion.div>
+                }
+              />
+              <Route
+                path="/register"
+                element={
+                  <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                    <RegisterPage onRegister={handleLogin} />
                   </motion.div>
                 }
               />
@@ -223,9 +248,13 @@ const App = () => {
               <Route
                 path="/checkout"
                 element={
-                  <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
-                    <CheckoutPage cartItems={cartItems} clearCart={clearCart} />
-                  </motion.div>
+                  user ? (
+                    <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                      <CheckoutPage cartItems={cartItems} clearCart={clearCart} />
+                    </motion.div>
+                  ) : (
+                    <Navigate to="/login" state={{ from: '/checkout' }} replace />
+                  )
                 }
               />
             </Routes>

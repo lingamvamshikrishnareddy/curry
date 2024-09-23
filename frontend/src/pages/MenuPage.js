@@ -20,7 +20,11 @@ const MenuPage = ({ addToCart, removeFromCart, updateQuantity, cartItems, initia
       setLoading(true);
       setError(null);
       const items = await getMenuItems(search, pageNum);
-      setMenuItems(prevItems => [...prevItems, ...items]);
+      if (pageNum === 1) {
+        setMenuItems(items);
+      } else {
+        setMenuItems(prevItems => [...prevItems, ...items]);
+      }
       setHasMore(items.length > 0);
     } catch (err) {
       console.error('Error fetching menu items:', err);
@@ -38,6 +42,7 @@ const MenuPage = ({ addToCart, removeFromCart, updateQuantity, cartItems, initia
   useEffect(() => {
     setMenuItems([]);
     setPage(1);
+    setHasMore(true);
     debouncedFetchMenuItems(searchTerm, 1);
     return () => debouncedFetchMenuItems.cancel();
   }, [debouncedFetchMenuItems, searchTerm]);
@@ -54,15 +59,16 @@ const MenuPage = ({ addToCart, removeFromCart, updateQuantity, cartItems, initia
   }, [loading, hasMore]);
 
   useEffect(() => {
-    if (page > 1) {
+    if (page > 1 && hasMore) {
       debouncedFetchMenuItems(searchTerm, page);
     }
-  }, [page, debouncedFetchMenuItems, searchTerm]);
+  }, [page, debouncedFetchMenuItems, searchTerm, hasMore]);
 
   const handleSearch = (term) => {
     setSearchTerm(term);
     setMenuItems([]);
     setPage(1);
+    setHasMore(true);
   };
 
   const filteredMenuItems = selectedCategory === 'All'
@@ -82,7 +88,14 @@ const MenuPage = ({ addToCart, removeFromCart, updateQuantity, cartItems, initia
     }
   };
 
-  
+  const handleAddToCart = (item) => {
+    addToCart({
+      id: item._id,
+      name: item.name,
+      price: item.price,
+      quantity: 1
+    });
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -112,13 +125,12 @@ const MenuPage = ({ addToCart, removeFromCart, updateQuantity, cartItems, initia
               <p className="text-gray-600 mb-4">{item.description}</p>
               <p className="text-lg font-bold mb-4">₹{item.price.toFixed(2)}</p>
               <button 
-                onClick={() => addToCart(item)} 
+                onClick={() => handleAddToCart(item)} 
                 className="w-full bg-green-500 text-white py-2 rounded-md hover:bg-green-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-opacity-50"
               >
                 Add to Cart
               </button>
               <ReviewForm onSubmit={(reviewData) => handleReviewSubmit(item._id, reviewData)} />
-              
             </motion.div>
           ))}
         </AnimatePresence>
@@ -126,6 +138,7 @@ const MenuPage = ({ addToCart, removeFromCart, updateQuantity, cartItems, initia
 
       {loading && <div className="text-center mt-8">Loading more items...</div>}
       {error && <div className="text-center mt-8 text-red-500">{error}</div>}
+      {!hasMore && <div className="text-center mt-8">No more items to load</div>}
 
       <Cart 
         cartItems={cartItems} 
@@ -135,6 +148,10 @@ const MenuPage = ({ addToCart, removeFromCart, updateQuantity, cartItems, initia
     </div>
   );
 };
+
+// ... (Rest of the component code remains the same)
+
+
 
 const ReviewForm = ({ onSubmit }) => {
   const [rating, setRating] = useState(0);
