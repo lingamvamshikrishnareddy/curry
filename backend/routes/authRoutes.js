@@ -1,10 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const authController = require('../controllers/authController');
-const authMiddleware = require('../middleware/authMiddleware');
+const { register, login } = require('../controllers/authController'); // Ensure these functions exist
 
-router.post('/register', authController.register);
-router.post('/login', authController.login);
-router.get('/profile', authMiddleware, authController.getProfile);
+router.post('/register', register); // Registration endpoint
+router.post('/login', login);       // Login endpoint
 
 module.exports = router;

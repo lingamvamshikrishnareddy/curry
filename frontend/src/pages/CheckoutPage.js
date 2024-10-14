@@ -1,190 +1,327 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, AlertCircle } from 'lucide-react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { placeOrder } from '../services/api';
-
-const schema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters" }),
-  email: z.string().email({ message: "Invalid email address" }),
-  address: z.string().min(5, { message: "Address must be at least 5 characters" }),
-  phone: z.string().regex(/^\d{10}$/, { message: "Phone must be 10 digits" }),
-});
+import { AlertTriangle } from 'lucide-react';
+import { placeOrder, initiatePayment, verifyPayment, getUserProfile, updateOrderStatus } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
 const CheckoutPage = ({ cartItems, clearCart }) => {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const navigate = useNavigate();
-  const { register, handleSubmit, formState: { errors } } = useForm({
-    resolver: zodResolver(schema)
+  const { user, isAuthenticated } = useAuth();
+  const [paymentMethod, setPaymentMethod] = useState('cod');
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [userDetails, setUserDetails] = useState({
+    name: '',
+    phone: '',
+    address: '',
   });
 
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      navigate('/login', { state: { from: '/checkout' } });
+  const totalAmount = useMemo(() => 
+    cartItems.reduce((total, item) => total + item.price * item.quantity, 0),
+    [cartItems]
+  );
+
+  const fetchUserProfile = useCallback(async () => {
+    if (!isAuthenticated) return;
+
+    try {
+      setIsLoading(true);
+      const profile = await getUserProfile();
+      setUserDetails({
+        name: profile.name || '',
+        phone: profile.phone || '',
+        address: profile.address || '',
+      });
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      setError('Failed to load user profile. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
-  }, [navigate]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    const loadRazorpay = async () => {
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.async = true;
-      document.body.appendChild(script);
-    };
-    loadRazorpay();
+    fetchUserProfile();
+  }, [fetchUserProfile]);
+
+  const handleInputChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setUserDetails(prev => ({ ...prev, [name]: value }));
   }, []);
 
-  const getTotalPrice = () => {
-    return cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  };
-
-  const handlePlaceOrder = async (formData) => {
-    setLoading(true);
-    setError(null);
-
+  const handlePaymentSuccess = useCallback(async (response, orderId) => {
     try {
-      const orderResponse = await placeOrder({
-        items: cartItems,
-        total: getTotalPrice(),
-        ...formData
+      const verificationResult = await verifyPayment({
+        razorpay_payment_id: response.razorpay_payment_id,
+        razorpay_order_id: response.razorpay_order_id,
+        razorpay_signature: response.razorpay_signature,
+        orderId: orderId
       });
       
+      if (verificationResult.success) {
+        clearCart();
+        navigate('/order-confirmation', { state: { orderId } });
+      } else {
+        setError("Payment verification failed. Please contact support.");
+      }
+    } catch (error) {
+      console.error('Error verifying payment:', error);
+      setError("Payment verification failed. Please contact support.");
+    }
+  }, [clearCart, navigate]);
+
+  const handleRazorpayPayment = useCallback(async (orderId) => {
+    try {
+      const paymentData = await initiatePayment(orderId, { method: 'RAZORPAY' });
+      
+      if (!paymentData || !paymentData.razorpayOrderId || !paymentData.amount) {
+        throw new Error('Invalid payment data received');
+      }
+  
       const options = {
-        key: process.env.REACT_APP_RAZORPAY_KEY,
-        amount: getTotalPrice() * 100,
-        currency: "INR",
-        name: "Curry",
-        description: "Food Order Payment",
-        order_id: orderResponse.orderId,
-        handler: function (response) {
-          handlePaymentSuccess(response, orderResponse.id);
-        },
+        key: process.env.REACT_APP_RAZORPAY_KEY_ID,
+        amount: paymentData.amount,
+        currency: paymentData.currency,
+        name: 'Your Restaurant Name',
+        description: 'Food Order Payment',
+        order_id: paymentData.razorpayOrderId,
+        handler: (response) => handlePaymentSuccess(response, orderId),
         prefill: {
-          name: formData.name,
-          email: formData.email,
-          contact: formData.phone
+          name: userDetails.name,
+          email: user?.email,
+          contact: userDetails.phone
         },
-        theme: {
-          color: "#10B981"
+        theme: { color: '#6366F1' },
+        modal: {
+          ondismiss: async () => {
+            try {
+              await updateOrderStatus(orderId, 'Pending');
+            } catch (error) {
+              console.error('Error updating order status:', error);
+            }
+            setError('Payment cancelled. Please try again.');
+            setIsLoading(false);
+          }
         }
       };
-
-      const paymentObject = new window.Razorpay(options);
-      paymentObject.open();
+  
+      const rzp = new window.Razorpay(options);
+      rzp.open();
     } catch (error) {
-      console.error('Error placing order:', error);
-      setError(error.message || 'Failed to place order. Please try again.');
-    } finally {
-      setLoading(false);
+      console.error('Payment initiation failed:', error);
+      setError(`Payment initiation failed: ${error.message}`);
+      setIsLoading(false);
     }
-  };
+  }, [handlePaymentSuccess, userDetails, user, updateOrderStatus]);
 
-  const handlePaymentSuccess = async (paymentResponse, orderId) => {
+  
+  const handleCODPayment = async (orderId) => {
     try {
-      await updateOrderStatus(orderId, {
-        status: 'Paid',
-        transactionId: paymentResponse.razorpay_payment_id
-      });
+      await updateOrderStatus(orderId, 'Confirmed');
       clearCart();
-      navigate('/order-success', { state: { orderId } });
+      navigate('/order-confirmation', { 
+        state: { 
+          orderId,
+          paymentMethod: 'COD'
+        }
+      });
     } catch (error) {
-      console.error('Error updating order status:', error);
-      setError('Payment successful, but failed to update order status. Please contact support.');
+      console.error('Error handling COD payment:', error);
+      setError('Failed to process COD order. Please try again.');
     }
   };
+
+  const validateOrderData = (orderData) => {
+    if (!orderData.items.length) {
+      throw new Error('Your cart is empty');
+    }
+    if (!orderData.name.trim()) {
+      throw new Error('Please enter your name');
+    }
+    if (!orderData.phone.trim()) {
+      throw new Error('Please enter your phone number');
+    }
+    if (!orderData.address.trim()) {
+      throw new Error('Please enter your delivery address');
+    }
+  };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+
+    try {
+        const orderData = {
+            items: cartItems.map((item) => ({
+                menuItem: item.id,
+                quantity: item.quantity,
+            })),
+            total: totalAmount,
+            ...userDetails,
+            paymentMethod: paymentMethod.toUpperCase(),
+        };
+
+        validateOrderData(orderData);
+
+        const response = await placeOrder(orderData);
+        const orderId = response.id;
+
+        if (paymentMethod === 'razorpay') {
+            await handleRazorpayPayment(orderId);
+        } else if (paymentMethod === 'cod') {
+            await handleCODPayment(orderId);
+        }
+    } catch (error) {
+        console.error('Error placing order:', error);
+        setError(error.message || "An error occurred while processing your order. Please try again.");
+    } finally {
+        setIsLoading(false);
+    }
+};
+  
+  if (!isAuthenticated) {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <h2 className="text-xl font-semibold mb-4">Please log in to access the checkout page.</h2>
+        <button
+          onClick={() => navigate('/login')}
+          className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+        >
+          Go to Login
+        </button>
+      </div>
+    );
+  }
+
+  if (isLoading && !error) {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+        <p className="mt-4">Processing your request...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5 }}
-      >
-        <h1 className="text-3xl font-bold mb-8 text-center">Checkout</h1>
-        {error && (
-          <motion.div
-            className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6"
-            initial={{ opacity: 0, x: -50 }}
-            animate={{ opacity: 1, x: 0 }}
-          >
-            <div className="flex items-center">
-              <AlertCircle className="mr-2" />
-              <p>{error}</p>
-            </div>
-          </motion.div>
-        )}
-        <div className="flex flex-col lg:flex-row gap-8">
-          <div className="lg:w-2/3">
-            <form onSubmit={handleSubmit(handlePlaceOrder)} className="space-y-4">
-              <div>
-                <label htmlFor="name" className="block mb-1">Name</label>
-                <input
-                  {...register("name")}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-                {errors.name && <p className="text-red-500 mt-1">{errors.name.message}</p>}
-              </div>
-              <div>
-                <label htmlFor="email" className="block mb-1">Email</label>
-                <input
-                  {...register("email")}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-                {errors.email && <p className="text-red-500 mt-1">{errors.email.message}</p>}
-              </div>
-              <div>
-                <label htmlFor="address" className="block mb-1">Address</label>
-                <textarea
-                  {...register("address")}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-                {errors.address && <p className="text-red-500 mt-1">{errors.address.message}</p>}
-              </div>
-              <div>
-                <label htmlFor="phone" className="block mb-1">Phone</label>
-                <input
-                  {...register("phone")}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-                {errors.phone && <p className="text-red-500 mt-1">{errors.phone.message}</p>}
-              </div>
-              <motion.button
-                type="submit"
-                className="w-full bg-green-500 text-white py-2 rounded-full hover:bg-green-600 transition-colors"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                disabled={loading}
-              >
-                {loading ? 'Processing...' : 'Place Order'}
-              </motion.button>
-            </form>
-          </div>
-          <div className="lg:w-1/3">
-            <div className="bg-gray-100 p-6 rounded-lg shadow">
-              <h2 className="text-xl font-bold mb-4">Order Summary</h2>
-              {cartItems.map((item) => (
-                <div key={item.id} className="flex justify-between mb-2">
-                  <span>{item.name} x {item.quantity}</span>
-                  <span>₹{(item.price * item.quantity).toFixed(2)}</span>
-                </div>
-              ))}
-              <div className="border-t border-gray-300 mt-4 pt-4">
-                <div className="flex justify-between font-bold">
-                  <span>Total</span>
-                  <span>₹{getTotalPrice().toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </motion.div>
+      <h1 className="text-3xl font-bold mb-6">Checkout</h1>
+      
+      {error && <ErrorAlert message={error} />}
+      
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <InputField
+          label="Name"
+          id="name"
+          name="name"
+          value={userDetails.name}
+          onChange={handleInputChange}
+          required
+        />
+        <InputField
+          label="Phone"
+          id="phone"
+          name="phone"
+          type="tel"
+          value={userDetails.phone}
+          onChange={handleInputChange}
+          required
+        />
+        <TextAreaField
+          label="Delivery Address"
+          id="address"
+          name="address"
+          value={userDetails.address}
+          onChange={handleInputChange}
+          required
+        />
+        
+        <PaymentMethodSelect
+          value={paymentMethod}
+          onChange={(e) => setPaymentMethod(e.target.value)}
+        />
+        
+        <OrderSummary cartItems={cartItems} totalAmount={totalAmount} />
+
+        <SubmitButton isLoading={isLoading} />
+      </form>
     </div>
   );
 };
+
+const ErrorAlert = ({ message }) => (
+  <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+    <AlertTriangle className="inline-block mr-2" />
+    <span className="block sm:inline">{message}</span>
+  </div>
+);
+
+const InputField = ({ label, id, ...props }) => (
+  <div>
+    <label htmlFor={id} className="block text-sm font-medium text-gray-700">{label}</label>
+    <input
+      id={id}
+      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+      {...props}
+    />
+  </div>
+);
+
+const TextAreaField = ({ label, id, ...props }) => (
+  <div>
+    <label htmlFor={id} className="block text-sm font-medium text-gray-700">{label}</label>
+    <textarea
+      id={id}
+      rows="3"
+      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+      {...props}
+    ></textarea>
+  </div>
+);
+
+const PaymentMethodSelect = ({ value, onChange }) => (
+  <div>
+    <label htmlFor="paymentMethod" className="block text-sm font-medium text-gray-700">Payment Method</label>
+    <select
+      id="paymentMethod"
+      name="paymentMethod"
+      value={value}
+      onChange={onChange}
+      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+    >
+      <option value="cod">Cash on Delivery</option>
+      <option value="razorpay">Razorpay</option>
+    </select>
+  </div>
+);
+
+const OrderSummary = ({ cartItems, totalAmount }) => (
+  <div className="mt-4">
+    <h2 className="text-xl font-semibold">Order Summary</h2>
+    <ul className="mt-2 space-y-2">
+      {cartItems.map((item) => (
+        <li key={item.id} className="flex justify-between">
+          <span>{item.name} x {item.quantity}</span>
+          <span>₹{(item.price * item.quantity).toFixed(2)}</span>
+        </li>
+      ))}
+    </ul>
+    <div className="mt-4 text-xl font-bold flex justify-between border-t pt-4">
+      <span>Total:</span>
+      <span>₹{totalAmount.toFixed(2)}</span>
+    </div>
+  </div>
+);
+
+const SubmitButton = ({ isLoading }) => (
+  <button
+    type="submit"
+    disabled={isLoading}
+    className={`w-full ${
+      isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
+    } text-white py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 mt-6`}
+  >
+    {isLoading ? 'Processing...' : 'Place Order'}
+  </button>
+);
 
 export default CheckoutPage;

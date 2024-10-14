@@ -1,17 +1,34 @@
-import React from 'react';
+const GoogleMap = ({ latitude, longitude }) => {
+  const mapRef = React.useRef(null);
+  const [mapError, setMapError] = useState(null);
 
-const Map = ({ address }) => {
-  // In a real application, you would use a mapping service like Google Maps
-  // For this example, we'll just display a placeholder
-  return (
-    <div className="bg-gray-200 p-4 rounded-lg">
-      <h3 className="text-lg font-semibold mb-2">Our Location</h3>
-      <p className="mb-2">{address}</p>
-      <div className="bg-gray-300 h-48 flex items-center justify-center">
-        <p className="text-gray-600">Map placeholder</p>
+  useEffect(() => {
+    if (latitude && longitude && window.google) {
+      try {
+        const map = new window.google.maps.Map(mapRef.current, {
+          center: { lat: latitude, lng: longitude },
+          zoom: 15,
+        });
+        new window.google.maps.Marker({
+          position: { lat: latitude, lng: longitude },
+          map: map,
+        });
+      } catch (error) {
+        console.error('Error initializing Google Map:', error);
+        setMapError('Failed to load the map. Please try again later.');
+      }
+    }
+  }, [latitude, longitude]);
+
+  if (mapError) {
+    return (
+      <div className="bg-red-100 text-red-800 p-4 rounded-lg">
+        {mapError}
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <div ref={mapRef} className="w-full h-64 rounded-lg shadow-md" />
   );
 };
-
-export default Map;

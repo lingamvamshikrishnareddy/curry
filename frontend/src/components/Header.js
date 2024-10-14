@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ShoppingCart, Menu as MenuIcon, MessageSquare, MapPin } from 'lucide-react';
+import { detectUserLocation, getLocationSuggestions, handleAutoDetectLocation } from '../services/api';
 
 // Custom Button component
 const Button = ({ onClick, variant = 'default', className = '', children, ...props }) => {
@@ -32,13 +33,50 @@ const Input = ({ className = '', ...props }) => {
   );
 };
 
-const Header = ({ cartItemsCount, user, onLogout, toggleChat, onLocationChange }) => {
+const Header = ({ cartItemsCount = 0, user = null, onLogout = () => {}, toggleChat = () => {}, onLocationChange = null }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [deliveryLocation, setDeliveryLocation] = useState('');
+  const [locationSuggestions, setLocationSuggestions] = useState([]);
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
 
-  const handleLocationChange = (e) => {
-    setDeliveryLocation(e.target.value);
-    onLocationChange(e.target.value);
+  useEffect(() => {
+    handleInitialLocationDetection();
+  }, []);
+
+  const handleInitialLocationDetection = async () => {
+    await handleAutoDetectLocation(setIsLoadingLocation, setDeliveryLocation, onLocationChange);
+  };
+
+  const handleLocationChange = async (e) => {
+    const newLocation = e.target.value;
+    setDeliveryLocation(newLocation);
+    if (onLocationChange) {
+      onLocationChange(newLocation);
+    }
+
+    if (newLocation.length > 2) {
+      try {
+        const suggestions = await getLocationSuggestions(newLocation);
+        setLocationSuggestions(suggestions);
+      } catch (error) {
+        console.error('Error fetching location suggestions:', error);
+        setLocationSuggestions([]);
+      }
+    } else {
+      setLocationSuggestions([]);
+    }
+  };
+
+  const handleSuggestionClick = (suggestion) => {
+    setDeliveryLocation(suggestion.formatted);
+    setLocationSuggestions([]);
+    if (onLocationChange) {
+      onLocationChange(suggestion.formatted);
+    }
+  };
+
+  const handleAutoDetectLocationClick = async () => {
+    await handleAutoDetectLocation(setIsLoadingLocation, setDeliveryLocation, onLocationChange);
   };
 
   return (
@@ -48,17 +86,33 @@ const Header = ({ cartItemsCount, user, onLogout, toggleChat, onLocationChange }
         <Link to="/" className="text-2xl font-bold text-orange-500">
           Curry
         </Link>
-
+      
         {/* Delivery Location */}
-        <div className="hidden md:flex items-center space-x-2">
+        <div className="hidden md:flex items-center space-x-2 relative">
           <MapPin className="text-gray-500" />
           <Input
             type="text"
-            placeholder="Enter delivery location"
+            placeholder={isLoadingLocation ? "Detecting location..." : "Enter delivery location"}
             value={deliveryLocation}
             onChange={handleLocationChange}
             className="w-64"
           />
+          <Button onClick={handleAutoDetectLocationClick} variant="ghost" className="p-2">
+            {isLoadingLocation ? 'Detecting...' : 'Detect'}
+          </Button>
+          {locationSuggestions.length > 0 && (
+            <ul className="absolute top-full left-0 w-full bg-white border border-gray-300 rounded-md shadow-lg z-10">
+              {locationSuggestions.map((suggestion, index) => (
+                <li
+                  key={index}
+                  className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                  onClick={() => handleSuggestionClick(suggestion)}
+                >
+                  {suggestion.formatted}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Navigation Links */}
