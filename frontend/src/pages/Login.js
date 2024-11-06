@@ -39,7 +39,9 @@ const LoginPage = () => {
           <input type="hidden" name="remember" value="true" />
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
-              <label htmlFor="email-address" className="sr-only">Email address</label>
+              <label htmlFor="email-address" className="sr-only">
+                Email address
+              </label>
               <input
                 id="email-address"
                 name="email"
@@ -53,7 +55,9 @@ const LoginPage = () => {
               />
             </div>
             <div>
-              <label htmlFor="password" className="sr-only">Password</label>
+              <label htmlFor="password" className="sr-only">
+                Password
+              </label>
               <input
                 id="password"
                 name="password"
@@ -69,9 +73,7 @@ const LoginPage = () => {
           </div>
 
           {error && (
-            <div className="text-red-500 text-sm mt-2">
-              {error}
-            </div>
+            <div className="text-red-500 text-sm mt-2">{error}</div>
           )}
 
           <div>

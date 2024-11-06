@@ -305,11 +305,27 @@ const OrderSummary = ({ cartItems, totalAmount }) => (
         </li>
       ))}
     </ul>
+    
     <div className="mt-4 text-xl font-bold flex justify-between border-t pt-4">
       <span>Total:</span>
       <span>₹{totalAmount.toFixed(2)}</span>
     </div>
+    <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold mb-4">Order Notes</h2>
+            <p className="text-sm text-gray-600">
+              • Orders typically deliver within 45-60 minutes
+              <br />
+              • Cash on delivery is available for orders under ₹2000
+              <br />
+              • Online payment is secured by Razorpay
+              <br />
+              • Make sure your delivery address is accurate
+              <br />
+              • You'll receive updates via SMS and email
+            </p>
+          </div>
   </div>
+  
 );
 
 const SubmitButton = ({ isLoading }) => (

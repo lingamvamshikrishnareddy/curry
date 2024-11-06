@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ShoppingCart, Menu as MenuIcon, MessageSquare, MapPin } from 'lucide-react';
 import { detectUserLocation, getLocationSuggestions, handleAutoDetectLocation } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
-// Custom Button component
 const Button = ({ onClick, variant = 'default', className = '', children, ...props }) => {
   const baseClasses = 'px-4 py-2 rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-opacity-50';
   const variantClasses = {
@@ -23,21 +23,19 @@ const Button = ({ onClick, variant = 'default', className = '', children, ...pro
   );
 };
 
-// Custom Input component
-const Input = ({ className = '', ...props }) => {
-  return (
-    <input
-      className={`px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${className}`}
-      {...props}
-    />
-  );
-};
+const Input = ({ className = '', ...props }) => (
+  <input
+    className={`px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${className}`}
+    {...props}
+  />
+);
 
-const Header = ({ cartItemsCount = 0, user = null, onLogout = () => {}, toggleChat = () => {}, onLocationChange = null }) => {
+const Header = ({ cartItemsCount = 0, toggleChat = () => {}, onLocationChange = null }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [deliveryLocation, setDeliveryLocation] = useState('');
   const [locationSuggestions, setLocationSuggestions] = useState([]);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const { user, isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
     handleInitialLocationDetection();
@@ -86,7 +84,7 @@ const Header = ({ cartItemsCount = 0, user = null, onLogout = () => {}, toggleCh
         <Link to="/" className="text-2xl font-bold text-orange-500">
           Curry
         </Link>
-      
+
         {/* Delivery Location */}
         <div className="hidden md:flex items-center space-x-2 relative">
           <MapPin className="text-gray-500" />
@@ -125,10 +123,10 @@ const Header = ({ cartItemsCount = 0, user = null, onLogout = () => {}, toggleCh
 
         {/* User Profile and Cart */}
         <div className="flex items-center space-x-4">
-          {user ? (
+          {isAuthenticated ? (
             <>
               <Link to="/profile" className="text-gray-600 hover:text-orange-500">Profile</Link>
-              <Button onClick={onLogout} variant="ghost">Logout</Button>
+              <Button onClick={logout} variant="ghost">Logout</Button>
             </>
           ) : (
             <>

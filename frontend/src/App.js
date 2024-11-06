@@ -15,7 +15,7 @@ import About from './pages/About';
 import MenuPage from './pages/MenuPage';
 import LoginPage from './pages/Login';
 import RegisterPage from './pages/RegisterPage';
-import Admin from './pages/Admin';
+
 import Profile from './pages/Profile';
 import Contact from './pages/Contact';
 import TrackOrderPage from './pages/TrackOrderPage';
@@ -230,10 +230,7 @@ const App = () => {
                 path="/track/:orderId"
                 element={<ProtectedRoute component={TrackOrderPage} />}
               />
-              <Route
-                path="/admin"
-                element={<ProtectedRoute component={Admin} />}
-              />
+              
               <Route
                 path="/profile"
                 element={<ProtectedRoute component={Profile} props={{ user }} />}
