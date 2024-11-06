@@ -19,6 +19,7 @@ const LoginPage = () => {
       const success = await login(formData);
       if (success) {
         navigate('/', { replace: true });
+        window.location.reload();  // Reload the page after navigating
       } else {
         setError('Invalid credentials. Please try again.');
       }
