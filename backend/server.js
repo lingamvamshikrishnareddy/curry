@@ -32,13 +32,26 @@ app.use(helmet());
 app.use(compression());
 app.use('/api/location', locationRoutes);
 
-// MongoDB connection
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-.then(() => console.log('Connected to MongoDB'))
-.catch((err) => console.error('MongoDB connection error:', err));
+.then(() => {
+  console.log('Connected to MongoDB');
+  startServer();
+})
+.catch((err) => {
+  console.error('MongoDB connection error:', err);
+  setTimeout(() => {
+    startServer();
+  }, 5000); // Wait 5 seconds before retrying
+});
+
+function startServer() {
+  server.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+  });
+}
 
 // Socket.io setup
 const io = new Server(server, {
