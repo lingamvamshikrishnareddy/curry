@@ -39,30 +39,8 @@ const DeliverySchema = new mongoose.Schema({
     },
     address: String
   },
-  route: [{
-    type: {
-      type: String,
-      enum: ['Point'],
-      default: 'Point'
-    },
-    coordinates: [Number],
-    timestamp: Date
-  }],
-  otp: {
-    code: String,
-    generatedAt: { 
-      type: Date, 
-      default: Date.now,
-      expires: 300 // OTP expires in 5 minutes
-    },
-    verified: {
-      type: Boolean,
-      default: false
-    }
-  },
   estimatedDeliveryTime: Date,
   actualDeliveryTime: Date,
-  customerSignature: String,
   feedback: {
     rating: {
       type: Number,
@@ -71,16 +49,7 @@ const DeliverySchema = new mongoose.Schema({
     },
     comment: String
   },
-  metadata: {
-    type: Map,
-    of: String
-  },
   deliveryInstructions: String,
-  deliveryAttempts: [{
-    attemptedAt: Date,
-    status: String,
-    notes: String
-  }],
   specialNotes: String
 }, {
   timestamps: true // Automatically adds createdAt and updatedAt
@@ -90,7 +59,6 @@ const DeliverySchema = new mongoose.Schema({
 DeliverySchema.index({ location: '2dsphere' });
 DeliverySchema.index({ orderId: 1, status: 1 });
 DeliverySchema.index({ userId: 1 });
-// You can add more indexes if needed, e.g., estimatedDeliveryTime for better querying
 
 // Middleware to update estimatedDeliveryTime before saving
 DeliverySchema.pre('save', function(next) {
@@ -115,21 +83,6 @@ DeliverySchema.virtual('deliveryDelay').get(function() {
   }
   return null;
 });
-
-// Method to add a delivery attempt
-DeliverySchema.methods.addDeliveryAttempt = async function(status, notes) {
-  try {
-    this.deliveryAttempts.push({
-      attemptedAt: new Date(),
-      status,
-      notes
-    });
-    return await this.save();
-  } catch (error) {
-    console.error('Error adding delivery attempt:', error);
-    throw error; // Rethrow the error to handle it further up the call chain
-  }
-};
 
 // Check if the model already exists before compiling it
 module.exports = mongoose.models.Delivery || mongoose.model('Delivery', DeliverySchema);
