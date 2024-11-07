@@ -4,7 +4,6 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
 const { Server } = require('socket.io');
-
 const helmet = require('helmet');
 const compression = require('compression');
 const authRoutes = require('./routes/authRoutes');
@@ -12,7 +11,6 @@ const menuRoutes = require('./routes/menuRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const chatRoutes = require('./routes/chatRoutes');
-
 const paymentRoutes = require('./routes/paymentRoutes');
 const userRoutes = require('./routes/userRoutes');
 const errorHandler = require('./middleware/errorHandler');
@@ -20,7 +18,6 @@ const socketAuthMiddleware = require('./middleware/socketAuthMiddleware');
 const locationRoutes = require('./routes/locationRoutes');
 
 dotenv.config();
-
 const app = express();
 const server = http.createServer(app);
 
@@ -52,9 +49,7 @@ const io = new Server(server, {
         credentials: true
     }
 });
-
 io.use(socketAuthMiddleware);
-
 io.on('connection', (socket) => {
     console.log('New client connected');
     socket.on('disconnect', () => {
@@ -62,10 +57,9 @@ io.on('connection', (socket) => {
     });
 });
 
-// Attach io and redisClient to req object
+// Attach io to req object
 app.use((req, res, next) => {
     req.io = io;
-    req.redisClient = redisClient;
     next();
 });
 
@@ -88,7 +82,6 @@ app.use('/api/menu', menuRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/chat', chatRoutes);
-
 app.use('/api/payments', paymentRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/location', locationRoutes);
