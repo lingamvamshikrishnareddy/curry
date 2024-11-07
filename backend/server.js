@@ -4,7 +4,6 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
 const { Server } = require('socket.io');
-const Redis = require('redis');
 const helmet = require('helmet');
 const compression = require('compression');
 const authRoutes = require('./routes/authRoutes');
@@ -20,17 +19,8 @@ const socketAuthMiddleware = require('./middleware/socketAuthMiddleware');
 const locationRoutes = require('./routes/locationRoutes');
 
 dotenv.config();
-
 const app = express();
 const server = http.createServer(app);
-
-// Redis client setup
-const redisClient = Redis.createClient({
-    url: process.env.REDIS_URL || 'redis://localhost:6379'
-});
-
-redisClient.on('error', (err) => console.log('Redis Client Error', err));
-redisClient.connect().then(() => console.log('Connected to Redis'));
 
 // Middleware
 app.use(cors({
@@ -60,9 +50,7 @@ const io = new Server(server, {
         credentials: true
     }
 });
-
 io.use(socketAuthMiddleware);
-
 io.on('connection', (socket) => {
     console.log('New client connected');
     socket.on('disconnect', () => {
@@ -70,10 +58,9 @@ io.on('connection', (socket) => {
     });
 });
 
-// Attach io and redisClient to req object
+// Attach io to req object
 app.use((req, res, next) => {
     req.io = io;
-    req.redisClient = redisClient;
     next();
 });
 
@@ -112,5 +99,4 @@ app.use('*', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
 module.exports = server;
