@@ -4,8 +4,8 @@
     "description": "A web application to track orders and check order status.",
     "main": "src/index.js",
     "scripts": {
-        "start": "NODE_OPTIONS='--max-old-space-size=2048' react-scripts start",
-        "build": "react-scripts build",
+        "start": "PORT=3000 NODE_OPTIONS='--max-old-space-size=4096' react-scripts start",
+        "build": "NODE_OPTIONS='--max-old-space-size=4096' react-scripts build",
         "test": "react-scripts test",
         "eject": "react-scripts eject",
         "lint": "eslint src/**/*.js"
