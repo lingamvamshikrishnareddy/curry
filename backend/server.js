@@ -16,9 +16,11 @@ const userRoutes = require('./routes/userRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const socketAuthMiddleware = require('./middleware/socketAuthMiddleware');
 const locationRoutes = require('./routes/locationRoutes');
+
 dotenv.config();
 const app = express();
 const server = http.createServer(app);
+const port = process.env.PORT || 10000;
 
 // Middleware
 app.use(cors({
@@ -32,26 +34,21 @@ app.use(helmet());
 app.use(compression());
 app.use('/api/location', locationRoutes);
 
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log('Connected to MongoDB');
-  startServer();
-})
-.catch((err) => {
-  console.error('MongoDB connection error:', err);
-  setTimeout(() => {
-    startServer();
-  }, 5000); // Wait 5 seconds before retrying
-});
-
-function startServer() {
-  server.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-  });
+// Connect to MongoDB and start the server
+async function connectToDatabase() {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log('Connected to MongoDB');
+    server.listen(port, () => {
+      console.log(`Server is running on port ${port}`);
+    });
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    setTimeout(connectToDatabase, 5000); // Retry connection after 5 seconds
+  }
 }
+
+connectToDatabase();
 
 // Socket.io setup
 const io = new Server(server, {
@@ -61,6 +58,7 @@ const io = new Server(server, {
     credentials: true
   }
 });
+
 io.use(socketAuthMiddleware);
 io.on('connection', (socket) => {
   console.log('New client connected');
@@ -107,7 +105,7 @@ app.use('*', (req, res) => {
   res.status(404).json({ message: 'Route not found' });
 });
 
-const port = process.env.PORT || 0;
+// Server error handling
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`Port ${port} is already in use`);
@@ -122,11 +120,6 @@ server.on('error', (err) => {
     console.error('Server error:', err);
     process.exit(1);
   }
-});
-
-server.listen(port, () => {
-  const actualPort = server.address().port;
-  console.log(`Server is running on port ${actualPort}`);
 });
 
 module.exports = server;
