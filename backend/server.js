@@ -26,103 +26,110 @@ const socketAuthMiddleware = require('./middleware/socketAuthMiddleware');
 // Load environment variables
 dotenv.config();
 
-// Initialize express app and server
+// Initialize express app
 const app = express();
 const server = http.createServer(app);
 
-// Security and optimization middleware
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100 // limit each IP to 100 requests per windowMs
-});
+// CORS Configuration for Vercel
+const corsOptions = {
+  origin: [
+    'https://veg-app-beta.vercel.app',
+    process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : ''
+  ].filter(Boolean),
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  maxAge: 86400
+};
 
 // Middleware configuration
-app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }
+}));
 app.use(compression());
+
+// Rate limiting for Vercel
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false
+});
 app.use(limiter);
-app.use(morgan('dev'));
+
+// Logging
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+}
+
+// Welcome route
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Welcome to VEG APP API',
+    version: '1.0.0',
+    status: 'active',
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.status(200).json({ 
-        status: 'healthy',
-        timestamp: new Date(),
-        uptime: process.uptime()
-    });
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV
+  });
 });
 
-// MongoDB connection with retry logic
+// MongoDB connection with optimized settings for Vercel
 const connectDB = async () => {
-    const retryInterval = 5000; // 5 seconds
-    const maxRetries = 5;
-    let retries = 0;
-
-    while (retries < maxRetries) {
-        try {
-            await mongoose.connect(process.env.MONGODB_URI, {
-                useNewUrlParser: true,
-                useUnifiedTopology: true,
-                serverSelectionTimeoutMS: 5000,
-                socketTimeoutMS: 45000,
-            });
-            console.log('Connected to MongoDB');
-            break;
-        } catch (err) {
-            retries++;
-            console.error(`MongoDB connection attempt ${retries} failed:`, err.message);
-            if (retries === maxRetries) {
-                console.error('Failed to connect to MongoDB after maximum retries');
-                process.exit(1);
-            }
-            await new Promise(resolve => setTimeout(resolve, retryInterval));
-        }
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    console.log('Connected to MongoDB');
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    // Don't exit process on Vercel
+    if (process.env.NODE_ENV !== 'production') {
+      process.exit(1);
     }
+  }
 };
 
+// Connect to MongoDB
 connectDB();
 
-// Socket.io setup with error handling
+// Socket.IO configuration optimized for Vercel
 const io = new Server(server, {
-    cors: {
-        origin: process.env.CLIENT_URL || 'http://localhost:3000',
-        methods: ['GET', 'POST'],
-        credentials: true
-    },
-    pingTimeout: 60000,
-    pingInterval: 25000
+  cors: corsOptions,
+  path: '/socket.io/',
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 io.use(socketAuthMiddleware);
 
+// Socket connection handling
 io.on('connection', (socket) => {
-    console.log(`Client connected: ${socket.id}`);
-    
-    socket.on('error', (error) => {
-        console.error('Socket error:', error);
-    });
+  console.log(`Client connected: ${socket.id}`);
+  
+  socket.on('error', (error) => {
+    console.error('Socket error:', error);
+  });
 
-    socket.on('disconnect', (reason) => {
-        console.log(`Client disconnected: ${socket.id}, Reason: ${reason}`);
-    });
-});
-
-// Attach io to req object with connection tracking
-let activeConnections = 0;
-app.use((req, res, next) => {
-    req.io = io;
-    activeConnections++;
-    res.on('finish', () => {
-        activeConnections--;
-    });
-    next();
+  socket.on('disconnect', (reason) => {
+    console.log(`Client disconnected: ${socket.id}, Reason: ${reason}`);
+  });
 });
 
 // API Routes
@@ -135,81 +142,32 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/location', locationRoutes);
 
-// Enhanced error logging middleware
-app.use((err, req, res, next) => {
-    const errorLog = {
-        timestamp: new Date().toISOString(),
-        error: {
-            message: err.message,
-            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
-            code: err.code,
-            status: err.status
-        },
-        request: {
-            method: req.method,
-            path: req.path,
-            query: req.query,
-            body: process.env.NODE_ENV === 'development' ? req.body : undefined,
-            ip: req.ip,
-            headers: req.headers
-        },
-        user: req.user ? { id: req.user.id } : null
-    };
-    
-    console.error('Error occurred:', errorLog);
-    next(err);
-});
-
-// Error handling middleware
+// Error handling
 app.use(errorHandler);
 
-// 404 handler with detailed logging
+// 404 handler
 app.use('*', (req, res) => {
-    console.log({
-        timestamp: new Date().toISOString(),
-        type: '404_ERROR',
-        method: req.method,
-        url: req.url,
-        headers: req.headers,
-        ip: req.ip
-    });
-    res.status(404).json({ message: 'Route not found' });
+  res.status(404).json({ 
+    message: 'Route not found',
+    path: req.originalUrl 
+  });
 });
-
-// Graceful shutdown handling
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
-
-async function gracefulShutdown(signal) {
-    console.log(`${signal} received. Starting graceful shutdown...`);
-    
-    // Close Socket.IO connections
-    io.close(() => {
-        console.log('Socket.IO server closed');
-    });
-
-    // Close HTTP server
-    server.close(() => {
-        console.log('HTTP server closed');
-    });
-
-    // Close MongoDB connection
-    try {
-        await mongoose.connection.close();
-        console.log('MongoDB connection closed');
-    } catch (err) {
-        console.error('Error closing MongoDB connection:', err);
-    }
-
-    // Exit process
-    process.exit(0);
-}
 
 // Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV}`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV}`);
+  console.log('Allowed origins:', corsOptions.origin);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled Promise Rejection:', err);
+  // Don't exit process on Vercel
+  if (process.env.NODE_ENV !== 'production') {
+    server.close(() => process.exit(1));
+  }
 });
 
 module.exports = server;
